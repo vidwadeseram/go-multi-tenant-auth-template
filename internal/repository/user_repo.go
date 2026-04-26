@@ -39,3 +39,7 @@ func (r *UserRepository) GetActiveByID(ctx context.Context, id uuid.UUID) (*mode
 	}
 	return &user, nil
 }
+
+func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
+	return r.db.WithContext(ctx).Save(user).Error
+}

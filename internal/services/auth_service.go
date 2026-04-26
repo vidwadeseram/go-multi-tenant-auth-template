@@ -169,3 +169,58 @@ func (s *AuthService) Me(ctx context.Context, userID uuid.UUID) (*models.User, e
 	}
 	return user, nil
 }
+
+func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
+	payload, err := s.tokenService.Decode(token, "verify")
+	if err != nil {
+		return err
+	}
+	user, err := s.userRepo.GetActiveByID(ctx, payload.Subject)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return apperrors.New(404, "USER_NOT_FOUND", "User not found.")
+		}
+		return err
+	}
+	if user.IsVerified {
+		return apperrors.New(400, "ALREADY_VERIFIED", "Email is already verified.")
+	}
+	user.IsVerified = true
+	return s.userRepo.Update(ctx, user)
+}
+
+func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil
+		}
+		return err
+	}
+	resetToken, err := s.tokenService.VerificationToken(user.ID, user.Email)
+	if err != nil {
+		return err
+	}
+	_ = s.mailer.Send(user.Email, "Password Reset", fmt.Sprintf("Your password reset token is: %s", resetToken))
+	return nil
+}
+
+func (s *AuthService) ResetPassword(ctx context.Context, token string, newPassword string) error {
+	payload, err := s.tokenService.Decode(token, "verify")
+	if err != nil {
+		return err
+	}
+	user, err := s.userRepo.GetActiveByID(ctx, payload.Subject)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return apperrors.New(404, "USER_NOT_FOUND", "User not found.")
+		}
+		return err
+	}
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = string(hashedPassword)
+	return s.userRepo.Update(ctx, user)
+}
