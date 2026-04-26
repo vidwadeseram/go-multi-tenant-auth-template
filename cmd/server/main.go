@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -67,9 +72,28 @@ func main() {
 	adminHandler.RegisterRoutes(api, authMiddleware.Handle(), tenantMiddleware.Handle())
 
 	addr := fmt.Sprintf(":%d", settings.AppPort)
-	logger.Info("starting server", "addr", addr, "multi_tenant_mode", settings.MultiTenantMode)
-	if err := router.Run(addr); err != nil {
-		logger.Error("server stopped", "error", err)
-		os.Exit(1)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: router,
 	}
+
+	go func() {
+		logger.Info("starting server", "addr", addr, "multi_tenant_mode", settings.MultiTenantMode)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("server stopped", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	logger.Info("shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error("server forced to shutdown", "error", err)
+	}
+	logger.Info("server exited")
 }
