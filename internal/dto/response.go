@@ -77,3 +77,7 @@ func NewUserData(user models.User) UserData {
 		UpdatedAt:  user.UpdatedAt,
 	}
 }
+
+type DataEnvelope struct {
+	Data interface{} `json:"data"`
+}
