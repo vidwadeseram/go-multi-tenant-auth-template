@@ -1,13 +1,13 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
 COPY . .
 
 RUN apk add --no-cache git && \
-    go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest && \
-    if [ -f go.mod ]; then go mod download; fi && \
-    if [ -f go.mod ]; then CGO_ENABLED=0 GOOS=linux go build -o /tmp/server ./cmd/server; else printf 'go.mod missing\n' > /tmp/server; fi
+	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.3 && \
+	if [ -f go.mod ]; then go mod download; fi && \
+	if [ -f go.mod ]; then CGO_ENABLED=0 GOOS=linux go build -o /tmp/server ./cmd/server; else printf 'go.mod missing\n' > /tmp/server; fi
 
 FROM alpine:3.19
 
