@@ -44,3 +44,26 @@ type UserRoleRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 	RoleID uuid.UUID `json:"role_id"`
 }
+
+type TenantCreateRequest struct {
+	Name string `json:"name" binding:"required"`
+	Slug string `json:"slug" binding:"required"`
+}
+
+type TenantUpdateRequest struct {
+	Name     *string `json:"name"`
+	IsActive *bool   `json:"is_active"`
+}
+
+type TenantInviteRequest struct {
+	Email  string    `json:"email" binding:"required,email"`
+	RoleID uuid.UUID `json:"role_id" binding:"required"`
+}
+
+type TenantInviteAcceptRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+type TenantMemberRoleUpdateRequest struct {
+	RoleID uuid.UUID `json:"role_id" binding:"required"`
+}

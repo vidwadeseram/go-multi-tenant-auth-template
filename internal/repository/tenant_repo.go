@@ -17,6 +17,10 @@ func NewTenantRepository(db *gorm.DB) *TenantRepository {
 	return &TenantRepository{db: db}
 }
 
+func (r *TenantRepository) DB() *gorm.DB {
+	return r.db
+}
+
 func (r *TenantRepository) GetBySlug(ctx context.Context, slug string) (*models.Tenant, error) {
 	var tenant models.Tenant
 	err := r.db.WithContext(ctx).Where("slug = ? AND is_active = ?", slug, true).First(&tenant).Error
