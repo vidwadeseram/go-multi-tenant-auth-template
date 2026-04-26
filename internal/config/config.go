@@ -20,6 +20,8 @@ type Settings struct {
 	JWTAlgorithm           string
 	SMTPHost               string
 	SMTPPort               int
+	SMTPUser               string
+	SMTPPassword           string
 	SMTPSender             string
 	AppPort                int
 	MultiTenantMode        string
@@ -66,6 +68,8 @@ func Load() (*Settings, error) {
 		JWTAlgorithm:           v.GetString("JWT_ALGORITHM"),
 		SMTPHost:               v.GetString("SMTP_HOST"),
 		SMTPPort:               v.GetInt("SMTP_PORT"),
+		SMTPUser:               v.GetString("SMTP_USER"),
+		SMTPPassword:           v.GetString("SMTP_PASSWORD"),
 		SMTPSender:             v.GetString("SMTP_SENDER"),
 		AppPort:                v.GetInt("APP_PORT"),
 		MultiTenantMode:        strings.ToLower(v.GetString("MULTI_TENANT_MODE")),
