@@ -69,11 +69,48 @@ func (s *TenantService) ResolveForUser(ctx context.Context, userID uuid.UUID, te
 }
 
 func (s *TenantService) EnsureTenantSchema(ctx context.Context, tenant *models.Tenant) error {
+	return s.ensureTenantSchema(s.db.WithContext(ctx), tenant)
+}
+
+func (s *TenantService) ensureTenantSchema(db *gorm.DB, tenant *models.Tenant) error {
 	if s.settings.MultiTenantMode != "schema" {
 		return nil
 	}
+	if !isSafeSlug(tenant.Slug) {
+		return apperrors.New(400, "INVALID_TENANT_SLUG", "Tenant slug contains unsafe characters.")
+	}
 	schema := fmt.Sprintf("tenant_%s", strings.ReplaceAll(tenant.Slug, "-", "_"))
-	return s.db.WithContext(ctx).Exec(fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", schema)).Error
+	if !isSafeIdentifier(schema) {
+		return apperrors.New(400, "INVALID_TENANT_SLUG", "Tenant slug produces unsafe identifier.")
+	}
+	return db.Exec(fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS "%s"`, schema)).Error
+}
+
+func isSafeSlug(s string) bool {
+	if s == "" || len(s) > 63 {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+func isSafeIdentifier(s string) bool {
+	if s == "" || len(s) > 63 {
+		return false
+	}
+	for i, r := range s {
+		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '_' {
+			return false
+		}
+		if i == 0 && (r >= '0' && r <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *TenantService) CreateTenant(ctx context.Context, tenant *models.Tenant, member *models.TenantMember) error {
@@ -81,7 +118,7 @@ func (s *TenantService) CreateTenant(ctx context.Context, tenant *models.Tenant,
 		if err := tx.Create(tenant).Error; err != nil {
 			return err
 		}
-		if err := s.EnsureTenantSchema(ctx, tenant); err != nil {
+		if err := s.ensureTenantSchema(tx, tenant); err != nil {
 			return err
 		}
 		return tx.Create(member).Error

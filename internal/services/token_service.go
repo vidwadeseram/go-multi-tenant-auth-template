@@ -70,8 +70,14 @@ func (s *TokenService) createToken(userID uuid.UUID, tenantID *string, tokenType
 
 func (s *TokenService) Decode(tokenString string, expectedType string) (*TokenPayload, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, apperrors.New(401, "INVALID_TOKEN", "Token signing method is invalid.")
+		}
+		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+			return nil, apperrors.New(401, "INVALID_TOKEN", "Token signing method is invalid.")
+		}
 		return []byte(s.settings.JWTSecret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
 		return nil, apperrors.New(401, "INVALID_TOKEN", "Token is invalid or expired.")
 	}

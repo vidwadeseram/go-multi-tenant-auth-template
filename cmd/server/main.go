@@ -45,7 +45,7 @@ func main() {
 
 	tenantService := services.NewTenantService(db, resolverManager, tenantRepo, settings)
 	tokenService := services.NewTokenService(settings)
-	authService := services.NewAuthService(userRepo, tokenRepo, tenantService, tokenService, mailer.New(settings), logger)
+	authService := services.NewAuthService(userRepo, tokenRepo, tenantService, tokenService, mailer.New(settings), db, logger)
 
 	authMiddleware := middleware.NewAuthMiddleware(tokenService, userRepo)
 	tenantMiddleware := middleware.NewTenantMiddleware(tenantService)

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -24,17 +25,18 @@ type AuthService struct {
 	tenantService *TenantService
 	tokenService  *TokenService
 	mailer        *mailer.Mailer
+	db            *gorm.DB
 	logger        *slog.Logger
 }
 
-func NewAuthService(userRepo *repository.UserRepository, tokenRepo *repository.TokenRepository, tenantService *TenantService, tokenService *TokenService, mailer *mailer.Mailer, logger *slog.Logger) *AuthService {
-	return &AuthService{userRepo: userRepo, tokenRepo: tokenRepo, tenantService: tenantService, tokenService: tokenService, mailer: mailer, logger: logger}
+func NewAuthService(userRepo *repository.UserRepository, tokenRepo *repository.TokenRepository, tenantService *TenantService, tokenService *TokenService, mailer *mailer.Mailer, db *gorm.DB, logger *slog.Logger) *AuthService {
+	return &AuthService{userRepo: userRepo, tokenRepo: tokenRepo, tenantService: tenantService, tokenService: tokenService, mailer: mailer, db: db, logger: logger}
 }
 
 func (s *AuthService) Register(ctx context.Context, payload dto.RegisterRequest) (*models.User, error) {
 	if _, err := s.userRepo.GetByEmail(ctx, payload.Email); err == nil {
 		return nil, apperrors.New(400, "EMAIL_ALREADY_EXISTS", "A user with this email already exists.")
-	} else if err != nil && err != gorm.ErrRecordNotFound {
+	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 
@@ -66,7 +68,7 @@ func (s *AuthService) Register(ctx context.Context, payload dto.RegisterRequest)
 func (s *AuthService) Login(ctx context.Context, payload dto.LoginRequest, tenantSlug string) (*dto.TokenResponse, error) {
 	user, err := s.userRepo.GetByEmail(ctx, payload.Email)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, apperrors.New(401, "INVALID_CREDENTIALS", "Invalid email or password.")
 		}
 		return nil, err
@@ -100,7 +102,9 @@ func (s *AuthService) Login(ctx context.Context, payload dto.LoginRequest, tenan
 		TokenHash: s.tokenService.HashToken(rawRefreshToken),
 		ExpiresAt: time.Now().UTC().Add(time.Duration(s.tokenService.settings.JWTRefreshExpireDays) * 24 * time.Hour),
 	}
-	if err := s.tokenRepo.Create(ctx, refreshRecord); err != nil {
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return s.tokenRepo.CreateWithTx(ctx, tx, refreshRecord)
+	}); err != nil {
 		return nil, err
 	}
 
@@ -115,16 +119,13 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*dto.To
 
 	tokenRecord, err := s.tokenRepo.FindActiveByHash(ctx, s.tokenService.HashToken(refreshToken), payload.Subject)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, apperrors.New(401, "INVALID_REFRESH_TOKEN", "Refresh token is invalid or expired.")
 		}
 		return nil, err
 	}
 	if tokenRecord.ExpiresAt.Before(time.Now().UTC()) {
 		return nil, apperrors.New(401, "INVALID_REFRESH_TOKEN", "Refresh token is invalid or expired.")
-	}
-	if err := s.tokenRepo.Revoke(ctx, tokenRecord); err != nil {
-		return nil, err
 	}
 
 	tokenResponse, rawRefreshToken, err := s.tokenService.IssueTokenPair(payload.Subject, payload.TenantID)
@@ -136,7 +137,12 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (*dto.To
 		TokenHash: s.tokenService.HashToken(rawRefreshToken),
 		ExpiresAt: time.Now().UTC().Add(time.Duration(s.tokenService.settings.JWTRefreshExpireDays) * 24 * time.Hour),
 	}
-	if err := s.tokenRepo.Create(ctx, newTokenRecord); err != nil {
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.tokenRepo.RevokeWithTx(ctx, tx, tokenRecord); err != nil {
+			return err
+		}
+		return s.tokenRepo.CreateWithTx(ctx, tx, newTokenRecord)
+	}); err != nil {
 		return nil, err
 	}
 
@@ -150,7 +156,7 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 	}
 	tokenRecord, err := s.tokenRepo.FindActiveByHash(ctx, s.tokenService.HashToken(refreshToken), payload.Subject)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return apperrors.New(401, "INVALID_REFRESH_TOKEN", "Refresh token is invalid.")
 		}
 		return err
@@ -161,7 +167,7 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 func (s *AuthService) Me(ctx context.Context, userID uuid.UUID) (*models.User, error) {
 	user, err := s.userRepo.GetActiveByID(ctx, userID)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, apperrors.New(401, "USER_NOT_FOUND", "Authenticated user was not found.")
 		}
 		s.logger.Error("failed to load user", "error", err, "user_id", userID)
@@ -177,7 +183,7 @@ func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
 	}
 	user, err := s.userRepo.GetActiveByID(ctx, payload.Subject)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return apperrors.New(404, "USER_NOT_FOUND", "User not found.")
 		}
 		return err
@@ -192,7 +198,7 @@ func (s *AuthService) VerifyEmail(ctx context.Context, token string) error {
 func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
 		}
 		return err
@@ -212,7 +218,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, token string, newPasswo
 	}
 	user, err := s.userRepo.GetActiveByID(ctx, payload.Subject)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return apperrors.New(404, "USER_NOT_FOUND", "User not found.")
 		}
 		return err

@@ -22,6 +22,10 @@ func (r *TokenRepository) Create(ctx context.Context, token *models.RefreshToken
 	return r.db.WithContext(ctx).Create(token).Error
 }
 
+func (r *TokenRepository) CreateWithTx(ctx context.Context, tx *gorm.DB, token *models.RefreshToken) error {
+	return tx.WithContext(ctx).Create(token).Error
+}
+
 func (r *TokenRepository) FindActiveByHash(ctx context.Context, hash string, userID uuid.UUID) (*models.RefreshToken, error) {
 	var token models.RefreshToken
 	err := r.db.WithContext(ctx).
@@ -37,4 +41,10 @@ func (r *TokenRepository) Revoke(ctx context.Context, token *models.RefreshToken
 	now := time.Now().UTC()
 	token.RevokedAt = &now
 	return r.db.WithContext(ctx).Save(token).Error
+}
+
+func (r *TokenRepository) RevokeWithTx(ctx context.Context, tx *gorm.DB, token *models.RefreshToken) error {
+	now := time.Now().UTC()
+	token.RevokedAt = &now
+	return tx.WithContext(ctx).Save(token).Error
 }

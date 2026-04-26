@@ -31,13 +31,23 @@ func (m *TenantMiddleware) Handle() gin.HandlerFunc {
 			return
 		}
 
-		tenantSlug := strings.TrimSpace(c.GetHeader("X-Tenant-ID"))
-		if tenantSlug == "" {
-			if claimsValue, ok := c.Get(ContextClaimsKey); ok {
-				if claims, ok := claimsValue.(*services.TokenPayload); ok && claims.TenantID != nil {
-					tenantSlug = strings.TrimSpace(*claims.TenantID)
-				}
+		var claimTenant string
+		if claimsValue, ok := c.Get(ContextClaimsKey); ok {
+			if claims, ok := claimsValue.(*services.TokenPayload); ok && claims.TenantID != nil {
+				claimTenant = strings.TrimSpace(*claims.TenantID)
 			}
+		}
+		headerTenant := strings.TrimSpace(c.GetHeader("X-Tenant-ID"))
+
+		var tenantSlug string
+		switch {
+		case claimTenant != "" && headerTenant != "" && claimTenant != headerTenant:
+			writeError(c, apperrors.New(403, "TENANT_MISMATCH", "Tenant header does not match token."))
+			return
+		case claimTenant != "":
+			tenantSlug = claimTenant
+		case headerTenant != "":
+			tenantSlug = headerTenant
 		}
 		if tenantSlug == "" {
 			c.Next()

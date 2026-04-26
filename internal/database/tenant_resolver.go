@@ -43,12 +43,28 @@ func (m *TenantResolverManager) WithTenant(tenantID uuid.UUID, tenantSlug string
 		return m.db.Scopes(TenantScope(tenantID)), nil
 	}
 
+	if !isSafeResolverSlug(tenantSlug) {
+		return nil, fmt.Errorf("invalid tenant slug")
+	}
 	resolverName := resolverNameForSlug(tenantSlug)
 	if err := m.ensureSchemaResolver(resolverName); err != nil {
 		return nil, err
 	}
 
 	return m.db.Clauses(dbresolver.Use(resolverName)), nil
+}
+
+func isSafeResolverSlug(s string) bool {
+	cleaned := strings.ToLower(strings.TrimSpace(s))
+	if cleaned == "" || len(cleaned) > 63 {
+		return false
+	}
+	for _, r := range cleaned {
+		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '-' && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *TenantResolverManager) ensureSchemaResolver(resolverName string) error {
