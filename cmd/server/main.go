@@ -59,6 +59,9 @@ func main() {
 
 	router.GET("/health", healthHandler.Handle)
 
+	router.StaticFile("/openapi.json", "./static/openapi.json")
+	router.StaticFile("/docs", "./static/swagger.html")
+
 	api := router.Group("/api/v1")
 	authHandler.RegisterRoutes(api, authMiddleware.Handle(), tenantMiddleware.Handle())
 	adminHandler.RegisterRoutes(api, authMiddleware.Handle(), tenantMiddleware.Handle())
