@@ -81,6 +81,7 @@ func (s *TenantService) CreateTenant(ctx context.Context, tenant *models.Tenant,
 		if err := tx.Create(tenant).Error; err != nil {
 			return err
 		}
+		member.TenantID = tenant.ID
 		if err := s.EnsureTenantSchema(ctx, tenant); err != nil {
 			return err
 		}
