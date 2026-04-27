@@ -58,6 +58,7 @@ func main() {
 	healthHandler := handlers.NewHealthHandler(sqlDB)
 	rbacRepo := repository.NewRBACRepository(db)
 	adminHandler := handlers.NewAdminHandler(rbacRepo, authService, tokenService)
+	tenantHandler := handlers.NewTenantHandler(tenantRepo, tenantService)
 
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
@@ -70,6 +71,7 @@ func main() {
 	api := router.Group("/api/v1")
 	authHandler.RegisterRoutes(api, authMiddleware.Handle(), tenantMiddleware.Handle())
 	adminHandler.RegisterRoutes(api, authMiddleware.Handle(), tenantMiddleware.Handle())
+	tenantHandler.RegisterRoutes(api, authMiddleware.Handle(), tenantMiddleware.Handle())
 
 	addr := fmt.Sprintf(":%d", settings.AppPort)
 	srv := &http.Server{
